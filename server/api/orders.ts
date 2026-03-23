@@ -8,6 +8,9 @@ const mailTransporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  connectionTimeout: 8000,
+  greetingTimeout: 8000,
+  socketTimeout: 8000,
 });
 
 async function sendOrderEmail(orderId: string, orderData: any) {
@@ -155,7 +158,7 @@ orders.post("/", async (c) => {
   });
 
   if ((body.status ?? "sent") === "sent") {
-    sendOrderEmail(ref.id, { supplierEmail: body.supplierEmail, lines: body.lines, notes: body.notes ?? "" });
+    await sendOrderEmail(ref.id, { supplierEmail: body.supplierEmail, lines: body.lines, notes: body.notes ?? "" });
   }
 
   return c.json({ ok: true, id: ref.id }, 201);
@@ -185,8 +188,12 @@ orders.patch("/:id", async (c) => {
   await docRef.update(update);
 
   if (body.status === "sent" && snap.data()?.status !== "sent") {
-    const updatedSnap = await docRef.get();
-    sendOrderEmail(id, updatedSnap.data());
+    const orderData = {
+      ...snap.data(),
+      ...(body.lines !== undefined && { lines: body.lines }),
+      ...(body.notes !== undefined && { notes: body.notes }),
+    };
+    await sendOrderEmail(id, orderData);
   }
 
   return c.json({ ok: true });
