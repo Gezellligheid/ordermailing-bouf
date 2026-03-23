@@ -91,57 +91,104 @@
           </div>
         </div>
 
-        <!-- Filter tabs -->
-        <div class="flex items-center gap-1 rounded-lg border bg-muted/40 p-1 w-fit">
-          <button
-            v-for="tab in FILTER_TABS"
-            :key="tab.value"
-            @click="activeFilter = tab.value"
-            :class="[
-              'rounded-md px-3 py-1.5 text-xs font-medium transition-all',
-              activeFilter === tab.value
-                ? 'bg-background shadow-sm text-foreground'
-                : 'text-muted-foreground hover:text-foreground',
-            ]"
-          >
-            {{ tab.label }}
-            <span class="ml-1 tabular-nums opacity-60">({{ tab.count }})</span>
-          </button>
-        </div>
+        <!-- Main content + missing panel -->
+        <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
 
-        <!-- Item grid -->
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <div
-            v-for="item in filteredItems"
-            :key="item.name"
-            :class="['flex flex-col gap-2 rounded-xl border bg-card p-4 shadow-sm', statusBorder(item)]"
-          >
-            <div class="flex items-start justify-between gap-2">
-              <p class="text-sm font-medium leading-snug">{{ item.name }}</p>
-              <span :class="['shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', statusBadge(item)]">
-                {{ statusLabel(item) }}
-              </span>
+          <!-- Left: filter tabs + grid -->
+          <div class="flex min-w-0 flex-1 flex-col gap-4">
+            <!-- Filter tabs -->
+            <div class="flex items-center gap-1 rounded-lg border bg-muted/40 p-1 w-fit">
+              <button
+                v-for="tab in FILTER_TABS"
+                :key="tab.value"
+                @click="activeFilter = tab.value"
+                :class="[
+                  'rounded-md px-3 py-1.5 text-xs font-medium transition-all',
+                  activeFilter === tab.value
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground',
+                ]"
+              >
+                {{ tab.label }}
+                <span class="ml-1 tabular-nums opacity-60">({{ tab.count }})</span>
+              </button>
             </div>
-            <div class="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+
+            <!-- Item grid -->
+            <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               <div
-                :class="['h-full rounded-full transition-all', progressColor(item)]"
-                :style="{ width: stockPercent(item) + '%' }"
-              />
+                v-for="item in filteredItems"
+                :key="item.name"
+                :class="['flex flex-col gap-2 rounded-xl border bg-card p-4 shadow-sm', statusBorder(item)]"
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <p class="text-sm font-medium leading-snug">{{ item.name }}</p>
+                  <span :class="['shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold', statusBadge(item)]">
+                    {{ statusLabel(item) }}
+                  </span>
+                </div>
+                <div class="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    :class="['h-full rounded-full transition-all', progressColor(item)]"
+                    :style="{ width: stockPercent(item) + '%' }"
+                  />
+                </div>
+                <p class="text-xs text-muted-foreground tabular-nums">
+                  {{ item.number }} / {{ item.total }}
+                  <span class="ml-1 opacity-70">({{ item.total - item.number }} ontbreekt)</span>
+                </p>
+              </div>
             </div>
-            <p class="text-xs text-muted-foreground tabular-nums">
-              {{ item.number }} / {{ item.total }}
-              <span class="ml-1 opacity-70">({{ item.total - item.number }} ontbreekt)</span>
+
+            <!-- Last refreshed -->
+            <p class="text-xs text-muted-foreground">
+              Laatste update: {{ lastRefreshed }}
+              <button class="ml-2 underline-offset-2 hover:underline" @click="fetchMachine(selectedMachine!)">
+                Vernieuwen
+              </button>
             </p>
           </div>
-        </div>
 
-        <!-- Last refreshed -->
-        <p class="text-xs text-muted-foreground">
-          Laatste update: {{ lastRefreshed }}
-          <button class="ml-2 underline-offset-2 hover:underline" @click="fetchMachine(selectedMachine!)">
-            Vernieuwen
-          </button>
-        </p>
+          <!-- Right: missing items panel -->
+          <div class="w-full lg:sticky lg:top-4 lg:w-72 shrink-0">
+            <div class="rounded-xl border bg-card shadow-sm">
+              <div class="border-b px-4 py-3">
+                <p class="text-sm font-semibold">Ontbrekend</p>
+                <p class="text-xs text-muted-foreground">{{ missingItems.length }} artikel{{ missingItems.length !== 1 ? 'en' : '' }} bij te vullen</p>
+              </div>
+
+              <div v-if="missingItems.length === 0" class="px-4 py-8 text-center text-sm text-muted-foreground">
+                Alles is op voorraad 🎉
+              </div>
+
+              <div v-else class="divide-y max-h-[60vh] overflow-y-auto">
+                <div
+                  v-for="item in missingItems"
+                  :key="item.name"
+                  class="flex items-center justify-between gap-3 px-4 py-2.5"
+                >
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-medium">{{ item.name }}</p>
+                    <p class="text-xs text-muted-foreground tabular-nums">
+                      {{ item.number }} / {{ item.total }}
+                    </p>
+                  </div>
+                  <span
+                    :class="[
+                      'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums',
+                      item.number === 0
+                        ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                        : 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
+                    ]"
+                  >
+                    -{{ item.total - item.number }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </template>
     </div>
   </TopLoader>
@@ -201,6 +248,17 @@ const mergedItems = computed(() => {
 const emptyCount = computed(() => mergedItems.value.filter((i) => i.number === 0).length);
 const lowCount = computed(() => mergedItems.value.filter((i) => i.number > 0 && i.number < i.total).length);
 const okCount = computed(() => mergedItems.value.filter((i) => i.number === i.total).length);
+
+const missingItems = computed(() =>
+  mergedItems.value
+    .filter((i) => i.number < i.total)
+    .sort((a, b) => {
+      // Empty first, then sort by most missing
+      if (a.number === 0 && b.number > 0) return -1;
+      if (b.number === 0 && a.number > 0) return 1;
+      return (b.total - b.number) - (a.total - a.number);
+    }),
+);
 
 const filteredItems = computed(() => {
   let list = mergedItems.value;
