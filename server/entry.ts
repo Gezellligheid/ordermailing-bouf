@@ -10,6 +10,20 @@ import { designsRouter } from "./api/designs";
 
 sentryServerConfig();
 
+// Ping Supabase every 5 days to prevent free-tier project pause (threshold: 7 days)
+const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
+setInterval(async () => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const client = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { persistSession: false },
+    });
+    await client.from("_supabase_keep_alive").select("1").limit(1).maybeSingle();
+  } catch {
+    // silently ignore — this is best-effort
+  }
+}, FIVE_DAYS_MS);
+
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 export default startApp() as unknown;

@@ -2,16 +2,29 @@ import { Hono } from "hono";
 import nodemailer from "nodemailer";
 import * as XLSX from "xlsx";
 
-const mailTransporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  connectionTimeout: 8000,
-  greetingTimeout: 8000,
-  socketTimeout: 8000,
-});
+const emailProvider = (process.env.EMAIL_PROVIDER || "gmail").toLowerCase();
+
+const transportConfig =
+  emailProvider === "outlook" || emailProvider === "microsoft365"
+    ? {
+        host: "smtp.office365.com",
+        port: 587,
+        secure: false,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        tls: { ciphers: "SSLv3" },
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 8000,
+      }
+    : {
+        service: "gmail",
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 8000,
+      };
+
+const mailTransporter = nodemailer.createTransport(transportConfig);
 
 async function sendOrderEmail(orderId: string, orderData: any) {
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS || !orderData.supplierEmail) {
