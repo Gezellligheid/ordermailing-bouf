@@ -148,7 +148,6 @@ import {
   PlusCircle,
   Truck,
   History,
-  Bot,
   Mail,
   ChevronsUpDown,
   User,
@@ -246,7 +245,6 @@ const nav = [
   { label: "Orders", url: "/orders", icon: ClipboardList },
   { label: "Suppliers", url: "/suppliers", icon: Truck },
   { label: "History", url: "/history", icon: History },
-  { label: "Automaten", url: "/automaten", icon: Bot },
   { label: "Video Creator", url: "/video", icon: Film },
   { label: "Design Editor", url: "/design", icon: PenTool },
 ];

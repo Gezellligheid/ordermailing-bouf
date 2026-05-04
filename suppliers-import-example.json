@@ -1,0 +1,21 @@
+{
+  "suppliers": [
+    {
+      "name": "Spuntini",
+      "email": "bestellingen@spuntini.be",
+      "description": "snacks",
+      "isActive": true,
+      "products": [
+        {
+          "orderName": "Name as shown on order email",
+          "displayName": "Internal display name",
+          "description": "Optional product description",
+          "idealStock": 10,
+          "displayOrder": 1,
+          "manualOrder": false,
+          "isActive": true
+        }
+      ]
+    }
+  ]
+}

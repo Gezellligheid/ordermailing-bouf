@@ -5,7 +5,6 @@ import * as Sentry from "@sentry/node";
 import { usersRouter } from "./api/users";
 import { suppliersRouter } from "./api/suppliers";
 import { ordersRouter } from "./api/orders";
-import { automatenRouter } from "./api/automaten";
 import { designsRouter } from "./api/designs";
 
 sentryServerConfig();
@@ -43,7 +42,6 @@ function startApp() {
   app.route("/api/users", usersRouter);
   app.route("/api/suppliers", suppliersRouter);
   app.route("/api/orders", ordersRouter);
-  app.route("/api/automaten", automatenRouter);
   app.route("/api/designs", designsRouter);
 
   apply(app, []);
