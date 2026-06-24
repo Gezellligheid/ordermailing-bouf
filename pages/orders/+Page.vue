@@ -48,6 +48,9 @@
                 <Button v-if="order.status === 'draft'" variant="ghost" size="icon" @click="continueOrder(order)">
                   <Pencil class="size-4" />
                 </Button>
+                <Button v-if="order.status === 'sent'" variant="ghost" size="icon" title="Resend email" @click="confirmResend(order)">
+                  <RotateCw class="size-4 text-muted-foreground" />
+                </Button>
                 <Button variant="ghost" size="icon" @click="confirmDelete(order)">
                   <Trash2 class="size-4 text-muted-foreground" />
                 </Button>
@@ -98,6 +101,15 @@
                       >
                         <Pencil class="size-4" />
                       </Button>
+                      <Button
+                        v-if="order.status === 'sent'"
+                        variant="ghost"
+                        size="icon"
+                        title="Resend email"
+                        @click="confirmResend(order)"
+                      >
+                        <RotateCw class="size-4 text-muted-foreground" />
+                      </Button>
                       <Button variant="ghost" size="icon" title="Delete" @click="confirmDelete(order)">
                         <Trash2 class="size-4 text-muted-foreground" />
                       </Button>
@@ -144,12 +156,52 @@
       </component>
     </component>
   </component>
+
+  <!-- Resend confirm -->
+  <component :is="isDesktop ? Dialog : Drawer" v-model:open="resendOpen">
+    <component :is="isDesktop ? DialogContent : DrawerContent" class="sm:max-w-md">
+      <component :is="isDesktop ? DialogHeader : DrawerHeader">
+        <component :is="isDesktop ? DialogTitle : DrawerTitle">Resend order email?</component>
+        <component :is="isDesktop ? DialogDescription : DrawerDescription">
+          This will resend the order email to
+          <strong>{{ resendTarget?.supplierName }}</strong
+          >.
+        </component>
+      </component>
+      <component :is="isDesktop ? DialogFooter : DrawerFooter" :class="['gap-2', !isDesktop && 'px-4 pb-4']">
+        <Button variant="outline" @click="resendOpen = false">Cancel</Button>
+        <Button :disabled="resending" @click="doResend">
+          <Loader2 v-if="resending" class="mr-2 size-4 animate-spin" />
+          Resend
+        </Button>
+      </component>
+    </component>
+  </component>
+
+  <!-- Mailto fallback -->
+  <component :is="isDesktop ? Dialog : Drawer" v-model:open="mailtoOpen">
+    <component :is="isDesktop ? DialogContent : DrawerContent" class="sm:max-w-md">
+      <component :is="isDesktop ? DialogHeader : DrawerHeader">
+        <component :is="isDesktop ? DialogTitle : DrawerTitle">Email could not be sent</component>
+        <component :is="isDesktop ? DialogDescription : DrawerDescription">
+          The automatic email failed. You can send it manually using your email client.
+        </component>
+      </component>
+      <component :is="isDesktop ? DialogFooter : DrawerFooter" :class="['gap-2', !isDesktop && 'px-4 pb-4']">
+        <Button variant="outline" @click="mailtoOpen = false">Close</Button>
+        <Button as="a" :href="mailtoUrl" target="_blank">
+          <MailOpen class="mr-2 size-4" />
+          Open in email client
+        </Button>
+      </component>
+    </component>
+  </component>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from "vue";
 import { useMediaQuery } from "@vueuse/core";
-import { PlusCircle, Pencil, Trash2, Loader2, ChevronLeft, ChevronRight } from "lucide-vue-next";
+import { PlusCircle, Pencil, Trash2, Loader2, ChevronLeft, ChevronRight, RotateCw, MailOpen } from "lucide-vue-next";
 import TopLoader from "@/components/ui/top-loader/TopLoader.vue";
 import { Button } from "@/components/ui/button";
 import {
@@ -381,6 +433,43 @@ function confirmDelete(order: Order) {
   deleteOpen.value = true;
 }
 
+// ─── Resend ──────────────────────────────────────────────────────────────────
+const resendOpen = ref(false);
+const resendTarget = ref<Order | null>(null);
+const resending = ref(false);
+const mailtoOpen = ref(false);
+const mailtoUrl = ref("");
+
+function confirmResend(order: Order) {
+  resendTarget.value = order;
+  resendOpen.value = true;
+}
+
+async function doResend() {
+  if (!resendTarget.value) return;
+  resending.value = true;
+  try {
+    const res = await apiFetch(`/api/orders/${resendTarget.value.id}/resend`, { method: "POST" });
+    const data = await res.json();
+    resendOpen.value = false;
+    if (!data.ok && data.mailto) {
+      const m = data.mailto;
+      mailtoUrl.value = `mailto:${encodeURIComponent(m.to)}?subject=${encodeURIComponent(m.subject)}&body=${encodeURIComponent(m.body)}`;
+      mailtoOpen.value = true;
+    }
+  } catch {
+    resendOpen.value = false;
+    const order = resendTarget.value;
+    const lines = order.lines.filter((l) => l.quantity > 0);
+    const body = lines.map((l) => `${l.internalName}: ${l.quantity}`).join("\n");
+    mailtoUrl.value = `mailto:${encodeURIComponent(order.supplierEmail)}?subject=${encodeURIComponent("Bestelling")}&body=${encodeURIComponent(body)}`;
+    mailtoOpen.value = true;
+  } finally {
+    resending.value = false;
+  }
+}
+
+// ─── Delete ───────────────────────────────────────────────────────────────────
 async function doDelete() {
   if (!deleteTarget.value) return;
   deleting.value = true;

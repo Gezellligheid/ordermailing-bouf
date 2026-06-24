@@ -104,11 +104,7 @@ async function sendOrderEmail(orderId: string, orderData: any) {
     ],
   };
 
-  try {
-    await mailTransporter.sendMail(mailOptions);
-  } catch (err) {
-    console.error("Failed to send order email:", err);
-  }
+  await mailTransporter.sendMail(mailOptions);
 }
 import { HTTPException } from "hono/http-exception";
 import { adminAuth, db } from "../firebase-admin";
@@ -171,7 +167,11 @@ orders.post("/", async (c) => {
   });
 
   if ((body.status ?? "sent") === "sent") {
-    await sendOrderEmail(ref.id, { supplierEmail: body.supplierEmail, lines: body.lines, notes: body.notes ?? "" });
+    try {
+      await sendOrderEmail(ref.id, { supplierEmail: body.supplierEmail, lines: body.lines, notes: body.notes ?? "" });
+    } catch (err) {
+      console.error("Failed to send order email:", err);
+    }
   }
 
   return c.json({ ok: true, id: ref.id }, 201);
@@ -206,11 +206,54 @@ orders.patch("/:id", async (c) => {
       ...(body.lines !== undefined && { lines: body.lines }),
       ...(body.notes !== undefined && { notes: body.notes }),
     };
-    await sendOrderEmail(id, orderData);
+    try {
+      await sendOrderEmail(id, orderData);
+    } catch (err) {
+      console.error("Failed to send order email:", err);
+    }
   }
 
   return c.json({ ok: true });
 });
+// ─── POST /api/orders/:id/resend ──────────────────────────────────────────────
+orders.post("/:id/resend", async (c) => {
+  const id = c.req.param("id");
+  const docRef = db.collection("orders").doc(id);
+  const snap = await docRef.get();
+  if (!snap.exists) throw new HTTPException(404, { message: "Order not found" });
+
+  const orderData = snap.data()!;
+  if (orderData.status !== "sent") {
+    throw new HTTPException(400, { message: "Only sent orders can be resent" });
+  }
+
+  const shopName = process.env.SHOP_NAME || "Our Shop";
+  const shopEmail = process.env.SHOP_EMAIL || process.env.SMTP_USER || "";
+
+  try {
+    await sendOrderEmail(id, orderData);
+    return c.json({ ok: true });
+  } catch (err) {
+    console.error("Resend failed:", err);
+
+    const lines = (orderData.lines || []).filter((l: any) => l.quantity > 0);
+    const bodyText = lines
+      .map((l: any) => `${l.supplierName || l.internalName}: ${l.quantity}`)
+      .join("\n");
+    const notesText = orderData.notes ? `\n\nAdditional notes:\n${orderData.notes}` : "";
+    const signature = `\n\n---\n${shopName}${shopEmail ? "\n" + shopEmail : ""}`;
+
+    return c.json({
+      ok: false,
+      mailto: {
+        to: orderData.supplierEmail,
+        subject: `Bestelling ${shopName}`,
+        body: `Please find our order details below:\n\n${bodyText}${notesText}${signature}`,
+      },
+    }, 200);
+  }
+});
+
 // ─── DELETE /api/orders/:id ────────────────────────────────────────────────────
 orders.delete("/:id", async (c) => {
   const id = c.req.param("id");
