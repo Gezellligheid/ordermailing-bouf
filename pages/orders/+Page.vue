@@ -178,6 +178,26 @@
     </component>
   </component>
 
+  <!-- Resend success -->
+  <Dialog v-model:open="resendSuccessOpen">
+    <DialogContent class="sm:max-w-sm text-center">
+      <div class="flex flex-col items-center gap-3 py-4">
+        <div class="flex size-14 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
+          <CheckCircle class="size-7 text-green-600 dark:text-green-400" />
+        </div>
+        <div>
+          <DialogTitle class="text-lg">Email resent!</DialogTitle>
+          <DialogDescription class="mt-1">
+            The order email to <strong>{{ resendSuccessSupplier }}</strong> has been resent.
+          </DialogDescription>
+        </div>
+      </div>
+      <DialogFooter class="sm:justify-center">
+        <Button variant="outline" @click="resendSuccessOpen = false">Close</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
   <!-- Mailto fallback -->
   <component :is="isDesktop ? Dialog : Drawer" v-model:open="mailtoOpen">
     <component :is="isDesktop ? DialogContent : DrawerContent" class="sm:max-w-md">
@@ -201,7 +221,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onUnmounted } from "vue";
 import { useMediaQuery } from "@vueuse/core";
-import { PlusCircle, Pencil, Trash2, Loader2, ChevronLeft, ChevronRight, RotateCw, MailOpen } from "lucide-vue-next";
+import { PlusCircle, Pencil, Trash2, Loader2, ChevronLeft, ChevronRight, RotateCw, MailOpen, CheckCircle } from "lucide-vue-next";
 import TopLoader from "@/components/ui/top-loader/TopLoader.vue";
 import { Button } from "@/components/ui/button";
 import {
@@ -437,6 +457,8 @@ function confirmDelete(order: Order) {
 const resendOpen = ref(false);
 const resendTarget = ref<Order | null>(null);
 const resending = ref(false);
+const resendSuccessOpen = ref(false);
+const resendSuccessSupplier = ref("");
 const mailtoOpen = ref(false);
 const mailtoUrl = ref("");
 
@@ -452,7 +474,10 @@ async function doResend() {
     const res = await apiFetch(`/api/orders/${resendTarget.value.id}/resend`, { method: "POST" });
     const data = await res.json();
     resendOpen.value = false;
-    if (!data.ok && data.mailto) {
+    if (data.ok) {
+      resendSuccessSupplier.value = resendTarget.value!.supplierName;
+      resendSuccessOpen.value = true;
+    } else if (data.mailto) {
       const m = data.mailto;
       mailtoUrl.value = `mailto:${encodeURIComponent(m.to)}?subject=${encodeURIComponent(m.subject)}&body=${encodeURIComponent(m.body)}`;
       mailtoOpen.value = true;
