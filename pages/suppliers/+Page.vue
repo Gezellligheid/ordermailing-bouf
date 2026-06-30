@@ -182,14 +182,21 @@
             <Search class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input v-model="productSearch" placeholder="Search products..." class="pl-9" />
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2">
             <span v-if="savingOrder" class="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Loader2 class="size-3 animate-spin" /> Saving order…
+            </span>
+            <span v-if="deliveryParsing" class="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 class="size-3 animate-spin" /> Parsing…
             </span>
             <p v-else class="text-sm text-muted-foreground">
               {{ productSearch ? `${filteredProducts.length} of ${products.length}` : products.length }}
               product{{ products.length !== 1 ? "s" : "" }}
             </p>
+            <Button size="sm" variant="outline" class="hidden md:flex" :disabled="productsLoading || deliveryParsing" @click="openDeliveryPaper">
+              <FileSpreadsheet class="mr-1.5 size-3.5" />
+              Upload levering
+            </Button>
             <Button size="sm" variant="outline" class="hidden md:flex" :disabled="productsLoading" @click="openMatrixEdit">
               <LayoutGrid class="mr-1.5 size-3.5" />
               Matrix edit
@@ -198,6 +205,7 @@
               <Plus class="mr-1.5 size-3.5" />
               Add product
             </Button>
+            <input ref="deliveryFileInput" type="file" accept=".csv,.xlsx,.xls,.pdf" class="hidden" @change="handleDeliveryFile" />
           </div>
         </div>
 
@@ -270,6 +278,7 @@
               <TableHead>Supplier name</TableHead>
               <TableHead>Our name</TableHead>
               <TableHead>Ideal stock</TableHead>
+              <TableHead>Prijs</TableHead>
               <TableHead>Manual</TableHead>
               <TableHead>Status</TableHead>
               <TableHead />
@@ -286,13 +295,13 @@
           >
             <template #header>
               <tr v-if="productsLoading">
-                <td colspan="7" class="p-4 text-center text-sm text-muted-foreground">Loading...</td>
+                <td colspan="8" class="p-4 text-center text-sm text-muted-foreground">Loading...</td>
               </tr>
               <tr v-else-if="products.length === 0">
-                <td colspan="7" class="p-4 text-center text-sm text-muted-foreground">No products yet.</td>
+                <td colspan="8" class="p-4 text-center text-sm text-muted-foreground">No products yet.</td>
               </tr>
               <tr v-else-if="productSearch && filteredProducts.length === 0">
-                <td colspan="7" class="p-4 text-center text-sm text-muted-foreground">
+                <td colspan="8" class="p-4 text-center text-sm text-muted-foreground">
                   No products match your search.
                 </td>
               </tr>
@@ -308,6 +317,9 @@
                 <td class="p-4 align-middle font-medium">{{ product.supplierName }}</td>
                 <td class="p-4 align-middle text-muted-foreground">{{ product.internalName }}</td>
                 <td class="p-4 align-middle">{{ product.idealStock }}</td>
+                <td class="p-4 align-middle tabular-nums text-muted-foreground">
+                  {{ product.price ? formatCurrency(product.price) : "—" }}
+                </td>
                 <td class="p-4 align-middle">
                   <Badge :variant="product.manualOrder ? 'default' : 'secondary'">
                     {{ product.manualOrder ? "Yes" : "No" }}
@@ -363,6 +375,43 @@
         <div class="flex flex-col gap-1.5">
           <label class="text-sm font-medium">Ideal stock</label>
           <Input v-model.number="productForm.idealStock" type="number" min="0" placeholder="0" />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-sm font-medium">Eenheid</label>
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              v-for="u in PRICE_UNITS"
+              :key="u.value"
+              type="button"
+              class="rounded-md border px-2.5 py-1 text-sm transition-colors"
+              :class="productForm.priceUnit === u.value
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border bg-background text-foreground hover:bg-muted'"
+              @click="productForm.priceUnit = u.value"
+            >{{ u.label }}</button>
+          </div>
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-sm font-medium">Prijs per {{ productForm.priceUnit }} (€)</label>
+          <Input v-model.number="productForm.price" type="number" min="0" step="0.01" placeholder="0.00" />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-sm font-medium">URL leverancier</label>
+          <div class="flex gap-1.5">
+            <Input v-model="productForm.supplierUrl" placeholder="https://…" class="min-w-0 flex-1" />
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              :disabled="!productForm.supplierUrl || scrapingPrice"
+              :title="scrapingPrice ? 'Laden…' : 'Prijs ophalen'"
+              @click="scrapePrice"
+            >
+              <Loader2 v-if="scrapingPrice" class="size-4 animate-spin" />
+              <RefreshCw v-else class="size-4" />
+            </Button>
+          </div>
+          <p v-if="scrapeError" class="text-xs text-destructive">{{ scrapeError }}</p>
         </div>
         <div class="flex items-center gap-2">
           <Checkbox id="product-manual" v-model="productForm.manualOrder" />
@@ -460,6 +509,73 @@
       </component>
     </component>
   </component>
+
+  <!-- Delivery paper column mapping dialog -->
+  <Dialog v-model:open="deliveryParseOpen">
+    <DialogContent class="sm:max-w-2xl">
+      <DialogHeader>
+        <DialogTitle>Leveringsbon verwerken</DialogTitle>
+        <DialogDescription>
+          Kies welke kolom de productnaam en prijs bevat. Gevonden {{ deliveryMatches.length }} overeenkomsten.
+        </DialogDescription>
+      </DialogHeader>
+      <div class="flex flex-col gap-4 py-2">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium">Productnaam kolom</label>
+            <select
+              v-model.number="deliveryNameCol"
+              class="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              @change="buildDeliveryMatches"
+            >
+              <option v-for="(h, i) in deliveryHeaders" :key="i" :value="i">{{ h || `Kolom ${i + 1}` }}</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium">Prijs kolom</label>
+            <select
+              v-model.number="deliveryPriceCol"
+              class="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              @change="buildDeliveryMatches"
+            >
+              <option v-for="(h, i) in deliveryHeaders" :key="i" :value="i">{{ h || `Kolom ${i + 1}` }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="max-h-64 overflow-y-auto rounded border">
+          <table class="w-full text-sm">
+            <thead class="sticky top-0 bg-muted/80">
+              <tr class="border-b">
+                <th class="px-3 py-2 text-left font-medium text-muted-foreground">Bestand naam</th>
+                <th class="px-3 py-2 text-left font-medium text-muted-foreground">Ons product</th>
+                <th class="px-3 py-2 text-right font-medium text-muted-foreground">Prijs</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y">
+              <tr v-for="(m, i) in deliveryMatches" :key="i" class="hover:bg-muted/30">
+                <td class="px-3 py-2 text-muted-foreground">{{ m.rawName }}</td>
+                <td class="px-3 py-2 font-medium">{{ m.product.internalName }}</td>
+                <td class="px-3 py-2 text-right tabular-nums">{{ formatCurrency(m.parsedPrice) }}</td>
+              </tr>
+              <tr v-if="deliveryMatches.length === 0">
+                <td colspan="3" class="px-3 py-6 text-center text-muted-foreground">Geen overeenkomsten gevonden.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-muted-foreground">
+          Prijzen worden bijgewerkt voor {{ deliveryMatches.length }} product{{ deliveryMatches.length !== 1 ? "en" : "" }}.
+        </p>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" :disabled="deliveryApplying" @click="deliveryParseOpen = false">Annuleren</Button>
+        <Button :disabled="deliveryApplying || deliveryMatches.length === 0" @click="applyDeliveryPrices">
+          <Loader2 v-if="deliveryApplying" class="mr-2 size-4 animate-spin" />
+          Prijzen toepassen
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 </template>
 
 <script setup lang="ts">
@@ -479,6 +595,10 @@ import {
   ArrowDown,
   GripVertical,
   LayoutGrid,
+  Euro,
+  Globe,
+  RefreshCw,
+  FileSpreadsheet,
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -522,6 +642,9 @@ interface Product {
   isActive: boolean;
   idealStock: number;
   displayOrder: number;
+  price: number;
+  supplierUrl: string;
+  priceHistory: { price: number; date: string; source: string }[];
 }
 
 const { loading: authLoading } = useAuth();
@@ -613,6 +736,17 @@ const productFormOpen = ref(false);
 const editingProduct = ref<Product | null>(null);
 const productSaving = ref(false);
 const productSaveError = ref("");
+const PRICE_UNITS = [
+  { value: "stuk", label: "stuk" },
+  { value: "kg", label: "kg" },
+  { value: "doos", label: "doos" },
+  { value: "pakket", label: "pakket" },
+  { value: "emmer", label: "emmer" },
+  { value: "liter", label: "liter" },
+  { value: "rol", label: "rol" },
+  { value: "meter", label: "meter" },
+];
+
 const productForm = reactive({
   supplierName: "",
   internalName: "",
@@ -620,7 +754,31 @@ const productForm = reactive({
   isActive: true,
   idealStock: 0,
   displayOrder: 0,
+  price: 0,
+  priceUnit: "stuk",
+  supplierUrl: "",
 });
+
+const scrapingPrice = ref(false);
+const scrapeError = ref("");
+
+// ─── Delivery paper ───────────────────────────────────────────────────────────
+const deliveryFileInput = ref<HTMLInputElement | null>(null);
+const deliveryParseOpen = ref(false);
+const deliveryHeaders = ref<string[]>([]);
+const deliveryRows = ref<string[][]>([]);
+const deliveryNameCol = ref(0);
+const deliveryPriceCol = ref(1);
+const deliveryParsing = ref(false);
+const deliveryApplying = ref(false);
+
+interface DeliveryMatch {
+  product: Product;
+  rawName: string;
+  parsedPrice: number;
+  matched: boolean;
+}
+const deliveryMatches = ref<DeliveryMatch[]>([]);
 
 const deleteProductOpen = ref(false);
 const deleteProductTarget = ref<Product | null>(null);
@@ -728,11 +886,15 @@ function openAddProduct() {
   editingProduct.value = null;
   productForm.supplierName = "";
   productForm.internalName = "";
+  productForm.priceUnit = "stuk";
   productForm.manualOrder = false;
   productForm.isActive = true;
   productForm.idealStock = 0;
   productForm.displayOrder = 0;
+  productForm.price = 0;
+  productForm.supplierUrl = "";
   productSaveError.value = "";
+  scrapeError.value = "";
   productFormOpen.value = true;
 }
 
@@ -744,7 +906,11 @@ function openEditProduct(product: Product) {
   productForm.isActive = product.isActive;
   productForm.idealStock = product.idealStock;
   productForm.displayOrder = product.displayOrder;
+  productForm.price = product.price ?? 0;
+  productForm.priceUnit = (product as any).priceUnit ?? "stuk";
+  productForm.supplierUrl = product.supplierUrl ?? "";
   productSaveError.value = "";
+  scrapeError.value = "";
   productFormOpen.value = true;
 }
 
@@ -754,16 +920,24 @@ async function saveProduct() {
   productSaveError.value = "";
   try {
     if (editingProduct.value) {
+      const prevPrice = editingProduct.value.price ?? 0;
+      const body: Record<string, unknown> = { ...productForm };
+      if (productForm.price !== prevPrice && productForm.price > 0) {
+        body._priceHistoryEntry = {
+          price: productForm.price,
+          date: new Date().toISOString(),
+          source: "manual",
+        };
+      }
       const res = await apiFetch(`/api/suppliers/${selectedSupplier.value.id}/products/${editingProduct.value.id}`, {
         method: "PATCH",
-        body: JSON.stringify(productForm),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         productSaveError.value = (err as any).message ?? `Save failed (${res.status})`;
         return;
       }
-      // Update in place — no re-fetch needed
       const idx = products.value.findIndex((p) => p.id === editingProduct.value!.id);
       if (idx !== -1) products.value[idx] = { ...products.value[idx], ...productForm };
     } else {
@@ -782,6 +956,97 @@ async function saveProduct() {
     productFormOpen.value = false;
   } finally {
     productSaving.value = false;
+  }
+}
+
+async function scrapePrice() {
+  if (!productForm.supplierUrl) return;
+  scrapingPrice.value = true;
+  scrapeError.value = "";
+  try {
+    const res = await apiFetch("/api/inventory/scrape-price", {
+      method: "POST",
+      body: JSON.stringify({ url: productForm.supplierUrl }),
+    });
+    const data = await res.json() as { price: number | null; raw: string | null; error?: string };
+    if (data.price !== null) {
+      productForm.price = data.price;
+    } else {
+      scrapeError.value = data.error ?? "Kon geen prijs vinden op deze pagina.";
+    }
+  } finally {
+    scrapingPrice.value = false;
+  }
+}
+
+function openDeliveryPaper() {
+  deliveryFileInput.value?.click();
+}
+
+async function handleDeliveryFile(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  (event.target as HTMLInputElement).value = "";
+  deliveryParsing.value = true;
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await apiFetch("/api/inventory/parse-delivery", { method: "POST", body: formData });
+    if (!res.ok) throw new Error("Parse failed");
+    const { headers, rows } = await res.json() as { headers: string[]; rows: string[][] };
+    deliveryHeaders.value = headers;
+    deliveryRows.value = rows;
+    deliveryNameCol.value = 0;
+    deliveryPriceCol.value = headers.length > 1 ? 1 : 0;
+    buildDeliveryMatches();
+    deliveryParseOpen.value = true;
+  } finally {
+    deliveryParsing.value = false;
+  }
+}
+
+function buildDeliveryMatches() {
+  const matches: DeliveryMatch[] = [];
+  for (const row of deliveryRows.value) {
+    const rawName = row[deliveryNameCol.value] ?? "";
+    const rawPrice = row[deliveryPriceCol.value] ?? "";
+    const cleaned = rawPrice.replace(/[^\d,\.]/g, "").replace(",", ".");
+    const parsedPrice = parseFloat(cleaned);
+    if (!rawName || isNaN(parsedPrice) || parsedPrice <= 0) continue;
+
+    const nameLower = rawName.toLowerCase();
+    const match = products.value.find(
+      (p) => p.internalName.toLowerCase().includes(nameLower) || nameLower.includes(p.internalName.toLowerCase()) ||
+             p.supplierName.toLowerCase().includes(nameLower) || nameLower.includes(p.supplierName.toLowerCase()),
+    );
+    if (match) {
+      matches.push({ product: match, rawName, parsedPrice, matched: true });
+    }
+  }
+  deliveryMatches.value = matches;
+}
+
+async function applyDeliveryPrices() {
+  if (!selectedSupplier.value) return;
+  deliveryApplying.value = true;
+  try {
+    await Promise.all(
+      deliveryMatches.value
+        .filter((m) => m.matched && m.parsedPrice > 0)
+        .map((m) =>
+          apiFetch(`/api/suppliers/${selectedSupplier.value!.id}/products/${m.product.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              price: m.parsedPrice,
+              _priceHistoryEntry: { price: m.parsedPrice, date: new Date().toISOString(), source: "delivery_paper" },
+            }),
+          }),
+        ),
+    );
+    await fetchProducts(selectedSupplier.value.id);
+    deliveryParseOpen.value = false;
+  } finally {
+    deliveryApplying.value = false;
   }
 }
 
@@ -850,5 +1115,9 @@ async function executeDeleteProduct() {
   } finally {
     deletingProduct.value = false;
   }
+}
+
+function formatCurrency(val: number) {
+  return new Intl.NumberFormat("nl-BE", { style: "currency", currency: "EUR" }).format(val);
 }
 </script>

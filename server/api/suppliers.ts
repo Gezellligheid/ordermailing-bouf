@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { adminAuth, db } from "../firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 const suppliers = new Hono();
 
@@ -94,14 +95,17 @@ suppliers.get("/:id/products", async (c) => {
 // ─── POST /api/suppliers/:id/products ────────────────────────────────────────
 suppliers.post("/:id/products", async (c) => {
   const id = c.req.param("id");
-  const { supplierName, internalName, manualOrder, isActive, idealStock, displayOrder } = await c.req.json<{
-    supplierName: string;
-    internalName: string;
-    manualOrder?: boolean;
-    isActive?: boolean;
-    idealStock?: number;
-    displayOrder?: number;
-  }>();
+  const { supplierName, internalName, manualOrder, isActive, idealStock, displayOrder, price, supplierUrl } =
+    await c.req.json<{
+      supplierName: string;
+      internalName: string;
+      manualOrder?: boolean;
+      isActive?: boolean;
+      idealStock?: number;
+      displayOrder?: number;
+      price?: number;
+      supplierUrl?: string;
+    }>();
 
   if (!supplierName || !internalName) {
     throw new HTTPException(400, { message: "supplierName and internalName are required" });
@@ -118,6 +122,9 @@ suppliers.post("/:id/products", async (c) => {
       isActive: isActive ?? true,
       idealStock: idealStock ?? 0,
       displayOrder: displayOrder ?? 0,
+      price: price ?? 0,
+      supplierUrl: supplierUrl ?? "",
+      priceHistory: [],
       createdAt: new Date().toISOString(),
     });
 
@@ -137,19 +144,19 @@ suppliers.patch("/:id/products/:productId", async (c) => {
       isActive: boolean;
       idealStock: number;
       displayOrder: number;
+      price: number;
+      supplierUrl: string;
+      _priceHistoryEntry: { price: number; date: string; source: string };
     }>
   >();
-  const allowed: (keyof typeof body)[] = [
-    "supplierName",
-    "internalName",
-    "manualOrder",
-    "isActive",
-    "idealStock",
-    "displayOrder",
-  ];
+  const { _priceHistoryEntry, ...rest } = body;
+  const allowed = ["supplierName", "internalName", "manualOrder", "isActive", "idealStock", "displayOrder", "price", "supplierUrl"] as const;
   const update: Record<string, unknown> = {};
   for (const key of allowed) {
-    if (key in body) update[key] = body[key];
+    if (key in rest) update[key] = rest[key as keyof typeof rest];
+  }
+  if (_priceHistoryEntry) {
+    update["priceHistory"] = FieldValue.arrayUnion(_priceHistoryEntry);
   }
   await db.collection("suppliers").doc(id).collection("products").doc(productId).update(update);
   return c.json({ ok: true });

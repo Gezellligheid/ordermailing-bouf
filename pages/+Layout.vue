@@ -158,6 +158,8 @@ import {
   ClipboardList,
   Film,
   PenTool,
+  Package,
+  BarChart3,
 } from "lucide-vue-next";
 import {
   Sidebar,
@@ -245,6 +247,8 @@ const nav = [
   { label: "Orders", url: "/orders", icon: ClipboardList },
   { label: "Suppliers", url: "/suppliers", icon: Truck },
   { label: "History", url: "/history", icon: History },
+  { label: "Inventarisatie", url: "/inventory", icon: Package },
+  { label: "Statistieken", url: "/inventory/statistics", icon: BarChart3 },
   { label: "Video Creator", url: "/video", icon: Film },
   { label: "Design Editor", url: "/design", icon: PenTool },
 ];

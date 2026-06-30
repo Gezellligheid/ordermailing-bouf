@@ -6,6 +6,7 @@
     "create-admin": "bun run scripts/create-admin.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.107.0",
     "@imgly/background-removal": "^1.7.0",
     "@photonjs/hono": "^0.1.12",
     "@photonjs/vercel": "^0.1.22",
@@ -23,6 +24,7 @@
     "hono": "^4.12.3",
     "lucide-vue-next": "^0.577.0",
     "mp4-muxer": "^5.2.2",
+    "pdf-parse": "^2.4.5",
     "radix-vue": "^1.9.17",
     "reka-ui": "^2.9.0",
     "tailwind-merge": "^3.5.0",
@@ -41,6 +43,7 @@
     "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^20.19.30",
     "@types/nodemailer": "^7.0.11",
+    "@types/pdf-parse": "^1.1.5",
     "@vitejs/plugin-vue": "^6.0.4",
     "h3": "~1.15.5",
     "nodemailer": "^8.0.2",

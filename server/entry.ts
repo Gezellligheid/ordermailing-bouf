@@ -6,6 +6,7 @@ import { usersRouter } from "./api/users";
 import { suppliersRouter } from "./api/suppliers";
 import { ordersRouter } from "./api/orders";
 import { designsRouter } from "./api/designs";
+import { inventoryRouter } from "./api/inventory";
 
 sentryServerConfig();
 
@@ -43,6 +44,7 @@ function startApp() {
   app.route("/api/suppliers", suppliersRouter);
   app.route("/api/orders", ordersRouter);
   app.route("/api/designs", designsRouter);
+  app.route("/api/inventory", inventoryRouter);
 
   apply(app, []);
 
